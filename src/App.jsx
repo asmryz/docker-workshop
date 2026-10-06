@@ -3,59 +3,97 @@ import Terminal from './Terminal'
 import './App.css'
 
 export default function App() {
-  const [dividerPos, setDividerPos] = useState(50)
-  const [isDragging, setIsDragging] = useState(false)
+  const [regno, setRegno] = useState('')
+  const [password, setPassword] = useState('')
+  const [session, setSession] = useState(null)
+  const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleMouseDown = () => {
-    setIsDragging(true)
-  }
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    setError('')
+    setIsSubmitting(true)
 
-  const handleMouseUp = () => {
-    setIsDragging(false)
-  }
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
+      const response = await fetch(`${protocol}//${window.location.hostname}:3001/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ regno: regno.trim(), password })
+      })
+      const result = await response.json()
 
-  const handleMouseMove = (e) => {
-    if (!isDragging) return
-
-    const container = document.querySelector('.app-container')
-    if (!container) return
-
-    const rect = container.getBoundingClientRect()
-    const newPos = ((e.clientX - rect.left) / rect.width) * 100
-
-    // Constrain between 20% and 80%
-    if (newPos >= 20 && newPos <= 80) {
-      setDividerPos(newPos)
-    }
-  }
-
-  React.useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
+      if (!response.ok) {
+        setError(result.error || 'Unable to sign in.')
+        return
       }
+
+      setSession(result)
+    } catch (requestError) {
+      console.error('Login request failed:', requestError)
+      setError('Could not reach the login server. Please try again.')
+    } finally {
+      setIsSubmitting(false)
     }
-  }, [isDragging])
+  }
+
+  if (session) {
+    return (
+      <main className="terminal-page">
+        <header className="terminal-header">
+          <div>
+            <span className="terminal-eyebrow">STUDENT TERMINAL</span>
+            <h1>{session.instanceName}</h1>
+          </div>
+          <button className="logout-button" onClick={() => setSession(null)}>
+            Sign out
+          </button>
+        </header>
+        <Terminal ticket={session.ticket} />
+      </main>
+    )
+  }
 
   return (
-    <>
-      <Terminal />
-    </>
-    // <div className="app-container">
-    //   <div className="left-panel" style={{ width: `${dividerPos}%` }}>
-    //     <div className="panel-content">
-    //       {/* Left panel content goes here */}
-    //     </div>
-    //   </div>
+    <main className="login-page">
+      <section className="login-card" aria-labelledby="login-title">
+        <div className="login-mark" aria-hidden="true">&gt;_</div>
+        <p className="login-eyebrow">STUDENT ACCESS</p>
+        <h1 id="login-title">Terminal login</h1>
+        <p className="login-description">
+          Sign in with your registration number to open your terminal.
+        </p>
 
-    //   <div className="divider" onMouseDown={handleMouseDown} />
+        <form className="login-form" onSubmit={handleSubmit}>
+          <label htmlFor="regno">Registration number</label>
+          <input
+            id="regno"
+            name="regno"
+            type="text"
+            autoComplete="username"
+            value={regno}
+            onChange={(event) => setRegno(event.target.value)}
+            required
+          />
 
-    //   <div className="right-panel" style={{ width: `${100 - dividerPos}%` }}>
-    //     <Terminal />
-    //   </div>
-    // </div>
+          <label htmlFor="password">Password</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+
+          {error && <p className="login-error" role="alert">{error}</p>}
+
+          <button className="login-button" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Preparing terminal…' : 'Sign in'}
+          </button>
+        </form>
+      </section>
+    </main>
   )
 }

@@ -4,12 +4,11 @@ import { FitAddon } from 'xterm-addon-fit'
 import { WebLinksAddon } from 'xterm-addon-web-links'
 import 'xterm/css/xterm.css'
 
-const Terminal = () => {
+const Terminal = ({ ticket }) => {
   const terminalRef = useRef(null)
-  const [status, setStatus] = React.useState('connecting')
-  const [error, setError] = React.useState(null)
 
   useEffect(() => {
+    let disposed = false
     const term = new XTerm({
       cursorBlink: true,
       theme: {
@@ -43,68 +42,56 @@ const Terminal = () => {
       resizeObserver.observe(terminalRef.current)
     }
 
-    // Setup WebSocket connection to terminal server
-    // Use the same hostname as the current page (works with both localhost and IP)
-    const wsUrl = `ws://${window.location.hostname}:3001`
-    let ws = new WebSocket(wsUrl)
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//${window.location.hostname}:3001?ticket=${encodeURIComponent(ticket)}`
+    let ws = null
+    const connectTimer = window.setTimeout(() => {
+      if (disposed) return
 
-    // Handle connection open
-    ws.addEventListener('open', () => {
-      setStatus('connected')
-      setError(null)
-      term.clear()
-      
-      // Send initial terminal dimensions
-      ws.send(JSON.stringify({ 
-        type: 'resize', 
-        cols: term.cols, 
-        rows: term.rows 
-      }))
-    })
+      ws = new WebSocket(wsUrl)
+      ws.addEventListener('open', () => {
+        term.clear()
+        ws.send(JSON.stringify({
+          type: 'resize',
+          cols: term.cols,
+          rows: term.rows
+        }))
+      })
 
-    // Handle incoming messages
-    ws.addEventListener('message', (ev) => {
-      try {
-        const msg = JSON.parse(ev.data)
-        if (msg.type === 'output') {
-          term.write(msg.data)
+      ws.addEventListener('message', (ev) => {
+        try {
+          const msg = JSON.parse(ev.data)
+          if (msg.type === 'output') {
+            term.write(msg.data)
+          }
+        } catch (err) {
+          console.error('Failed to parse message:', err)
+          term.write(ev.data)
         }
-      } catch (err) {
-        console.error('Failed to parse message:', err)
-        term.write(ev.data)
-      }
-    })
+      })
 
-    ws.addEventListener('error', (event) => {
-      console.error('WebSocket error:', event)
-      setError('Failed to connect to terminal server')
-      setStatus('error')
-    })
+      ws.addEventListener('error', (event) => {
+        console.error('WebSocket error:', event)
+        if (!disposed) term.write('\r\nUnable to connect to your terminal.\r\n')
+      })
 
-    ws.addEventListener('close', () => {
-      setStatus('disconnected')
-      term.write('\r\n\nConnection closed. Attempting to reconnect...\r\n')
-      
-      // Attempt to reconnect after 3 seconds
-      setTimeout(() => {
-        if (ws.readyState === WebSocket.CLOSED) {
-          ws = new WebSocket(wsUrl)
-          setStatus('connecting')
+      ws.addEventListener('close', (event) => {
+        if (!disposed) {
+          const reason = event.reason || `code ${event.code}`
+          term.write(`\r\n\nConnection closed (${reason}).\r\n`)
         }
-      }, 3000)
-    })
+      })
+    }, 0)
 
-    // Handle terminal input
     term.onData(data => {
-      if (ws.readyState === WebSocket.OPEN) {
+      if (ws?.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'input', data }))
       }
     })
 
-    // Handle window resize
     const handleResize = () => {
       fitAddon.fit()
-      if (ws.readyState === WebSocket.OPEN) {
+      if (ws?.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ 
           type: 'resize', 
           cols: term.cols, 
@@ -115,14 +102,14 @@ const Terminal = () => {
 
     window.addEventListener('resize', handleResize)
 
-    // Do initial fit
     handleResize()
 
-    // Cleanup
     return () => {
+      disposed = true
+      window.clearTimeout(connectTimer)
       window.removeEventListener('resize', handleResize)
       resizeObserver.disconnect()
-      ws.close()
+      ws?.close()
       term.dispose()
     }
   }, [])
