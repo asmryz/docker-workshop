@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vertical Resizable Divider</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+    }
+
+    body, html {
+        height: 100%;
+        font-family: Arial, sans-serif;
+    }
+
+    .container {
+        display: flex;
+        height: 100vh;
+        width: 100%;
+        overflow: hidden;
+    }
+
+    .left {
+        width: 50%;
+        background: #f4f6f9;
+        padding: 20px;
+        overflow: auto;
+    }
+
+    .right {
+        flex: 1;
+        background: #ffffff;
+        padding: 20px;
+        overflow: auto;
+    }
+
+    .divider {
+        width: 6px;
+        cursor: col-resize;
+        background: #d1d5db;
+        transition: background 0.2s;
+    }
+
+    .divider:hover {
+        background: #4f46e5;
+    }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+    <div class="left">
+        <h2>Left Panel</h2>
+        <p>Drag the divider to resize this panel.</p>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="right">
+        <h2>Right Panel</h2>
+        <p>This panel resizes dynamically.</p>
+    </div>
+</div>
+
+<script>
+    const divider = document.querySelector('.divider');
+    const left = document.querySelector('.left');
+    const container = document.querySelector('.container');
+
+    let isResizing = false;
+
+    divider.addEventListener('mousedown', function () {
+        isResizing = true;
+        document.body.style.cursor = 'col-resize';
+    });
+
+    document.addEventListener('mousemove', function (e) {
+        if (!isResizing) return;
+
+        const containerRect = container.getBoundingClientRect();
+        let newLeftWidth = e.clientX - containerRect.left;
+
+        // Optional: set min width
+        const minWidth = 100;
+        if (newLeftWidth < minWidth) newLeftWidth = minWidth;
+        if (newLeftWidth > containerRect.width - minWidth) {
+            newLeftWidth = containerRect.width - minWidth;
+        }
+
+        left.style.width = newLeftWidth + 'px';
+    });
+
+    document.addEventListener('mouseup', function () {
+        isResizing = false;
+        document.body.style.cursor = 'default';
+    });
+</script>
+
+</body>
+</html>

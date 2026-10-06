@@ -1,0 +1,77 @@
+:root {
+  --bg: #0b1020;
+  --panel: #0f1724;
+  --text: #e6eef6;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  /* overflow: hidden; */
+}
+
+#root {
+  background: var(--panel);
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.terminal-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.terminal-container {
+  width: 100%;
+  height: 100%;
+  background: var(--panel);
+  overflow: hidden;
+  flex: 1;
+}
+
+.terminal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  z-index: 1000;
+}
+
+/* Ensure xterm.js terminal fills container */
+.terminal-container .xterm {
+  height: 100%;
+  width: 100%;
+  padding: 0;
+}
+
+/* Make the canvas fill the terminal */
+.terminal-container .xterm-screen {
+  width: 100% !important;
+  height: 100% !important;
+}
