@@ -15,7 +15,16 @@ const __dirname = dirname(__filename);
 const app = express();
 const server = http.createServer(app);
 const loginTickets = new Map();
+const sessions = new Map();
+const SESSION_LIFETIME_MS = 12 * 60 * 60 * 1000;
 const instancePreparations = new Map();
+const SHELL_INIT = [
+  '[ -f ~/.bashrc ] && . ~/.bashrc',
+  'eval "$(dircolors -b 2>/dev/null)"',
+  "alias ls='ls --color=auto'",
+  "alias ll='ls -alF --color=auto'",
+  "alias grep='grep --color=auto'"
+].join('\n');
 const TICKET_LIFETIME_MS = 60_000;
 
 // Demo credentials only. Replace with a trusted credential source before deployment.
@@ -96,6 +105,36 @@ async function ensureStudentInstance(instanceName) {
   }
 }
 
+function issueTicket(instanceName) {
+  const now = Date.now();
+  for (const [ticket, details] of loginTickets) {
+    if (details.expiresAt <= now) loginTickets.delete(ticket);
+  }
+  const ticket = randomUUID();
+  loginTickets.set(ticket, { instanceName, expiresAt: now + TICKET_LIFETIME_MS });
+  return ticket;
+}
+
+function getSession(token) {
+  const session = typeof token === 'string' ? sessions.get(token) : null;
+  if (session && session.expiresAt <= Date.now()) {
+    sessions.delete(token);
+    return null;
+  }
+  return session ?? null;
+}
+
+app.post('/api/session', (req, res) => {
+  const session = getSession(req.body?.sessionToken);
+  if (!session) return res.status(401).json({ error: 'Session expired.' });
+  res.json({ ticket: issueTicket(session.instanceName), instanceName: session.instanceName });
+});
+
+app.post('/api/logout', (req, res) => {
+  if (typeof req.body?.sessionToken === 'string') sessions.delete(req.body.sessionToken);
+  res.json({ ok: true });
+});
+
 app.post('/api/login', async (req, res) => {
   const { regno, password } = req.body ?? {};
   const credentials = typeof regno === 'string' ? demoCredentials.get(regno) : null;
@@ -108,17 +147,12 @@ app.post('/api/login', async (req, res) => {
   try {
     await ensureStudentInstance(instanceName);
 
-    const now = Date.now();
-    for (const [ticket, details] of loginTickets) {
-      if (details.expiresAt <= now) loginTickets.delete(ticket);
-    }
-
-    const ticket = randomUUID();
-    loginTickets.set(ticket, {
+    const sessionToken = randomUUID();
+    sessions.set(sessionToken, {
       instanceName,
-      expiresAt: now + TICKET_LIFETIME_MS
+      expiresAt: Date.now() + SESSION_LIFETIME_MS
     });
-    res.json({ ticket, instanceName });
+    res.json({ ticket: issueTicket(instanceName), instanceName, sessionToken });
   } catch (error) {
     console.error(`Failed to prepare terminal instance "${instanceName}":`, error);
     res.status(500).json({ error: 'Unable to prepare your terminal instance. Please try again.' });
@@ -155,7 +189,10 @@ wss.on('connection', (ws, req) => {
 
   let ptyProcess;
   try {
-    ptyProcess = pty.spawn('lxc', ['exec', instanceName, '--', 'bash'], {
+    ptyProcess = pty.spawn('lxc', [
+      'exec', instanceName, '--env', 'TERM=xterm-256color', '--',
+      'bash', '-c', `exec bash --rcfile <(printf '%s\\n' "$1") -i`, 'bash', SHELL_INIT
+    ], {
       name: 'xterm-256color',
       cols: 120,
       rows: 40,

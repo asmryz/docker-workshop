@@ -1,6 +1,9 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import Terminal from './Terminal'
 import './App.css'
+
+const STORAGE_KEY = 'terminalSessionToken'
+const apiBase = () => `${window.location.protocol === 'https:' ? 'https:' : 'http:'}//${window.location.hostname}:3001`
 
 export default function App() {
   const [regno, setRegno] = useState('')
@@ -8,6 +11,37 @@ export default function App() {
   const [session, setSession] = useState(null)
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [restoring, setRestoring] = useState(() => !!localStorage.getItem(STORAGE_KEY))
+
+  useEffect(() => {
+    const token = localStorage.getItem(STORAGE_KEY)
+    if (!token) return
+    fetch(`${apiBase()}/api/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionToken: token })
+    })
+      .then(async (response) => {
+        if (response.ok) setSession({ ...(await response.json()), sessionToken: token })
+        else if (response.status === 401) localStorage.removeItem(STORAGE_KEY)
+      })
+      .catch((err) => console.error('Session restore failed:', err))
+      .finally(() => setRestoring(false))
+  }, [])
+
+  const handleSignOut = () => {
+    const token = localStorage.getItem(STORAGE_KEY)
+    localStorage.removeItem(STORAGE_KEY)
+    setSession(null)
+    setPassword('')
+    if (token) {
+      fetch(`${apiBase()}/api/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionToken: token })
+      }).catch(() => {})
+    }
+  }
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -28,6 +62,7 @@ export default function App() {
         return
       }
 
+      localStorage.setItem(STORAGE_KEY, result.sessionToken)
       setSession(result)
     } catch (requestError) {
       console.error('Login request failed:', requestError)
@@ -37,6 +72,8 @@ export default function App() {
     }
   }
 
+  if (restoring) return null
+
   if (session) {
     return (
       <main className="terminal-page">
@@ -45,7 +82,7 @@ export default function App() {
             <span className="terminal-eyebrow">STUDENT TERMINAL</span>
             <h1>{session.instanceName}</h1>
           </div>
-          <button className="logout-button" onClick={() => setSession(null)}>
+          <button className="logout-button" onClick={handleSignOut}>
             Sign out
           </button>
         </header>
